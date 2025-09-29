@@ -38,7 +38,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private readonly DateTime expirationDate = new DateTime(2025, 12, 31);
         
         // URL de tu servidor de autorización (puedes usar Firebase, Supabase, o tu propio servidor)
-        private readonly string authServerUrl = "http://localhost:3000/api";
+        private readonly string authServerUrl = "https://tradingadmin-q36j.vercel.app/api";
         private readonly string botVersion = "1.0";
         private readonly string botName = "CloseCustom Bot";
         
