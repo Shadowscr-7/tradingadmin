@@ -30,7 +30,10 @@ if (SUPABASE_URL !== 'https://tu-proyecto.supabase.co') {
 }
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: ['https://tradingadmin-q36j.vercel.app', 'http://localhost:3000'],
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -425,7 +428,17 @@ async function sendTelegramNotification(data) {
 
 // Servir panel de administración
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin_panel.html'));
+    const fs = require('fs');
+    const adminPath = path.join(__dirname, 'admin_panel.html');
+    
+    try {
+        const html = fs.readFileSync(adminPath, 'utf8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (error) {
+        console.error('Error serving admin panel:', error);
+        res.status(404).send('Admin panel not found');
+    }
 });
 
 // Ruta raíz
