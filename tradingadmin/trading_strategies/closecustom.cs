@@ -68,6 +68,9 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
         private bool endLineDrawn = false;
         private bool unauthorizedMessageShown = false;
         private bool authorizedMessageShown = false;
+        
+        // Control de día para reset automático
+        private DateTime lastTradingDay = DateTime.MinValue;
 
         // Configuración fija (no modificable por usuario)
         private bool UseBreakEven = true;
@@ -99,14 +102,16 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
             }
             else if (State == State.Configure)
             {
-                // VALIDACIÓN DE AUTORIZACIÓN ASYNC
+                priorDayOHLC = PriorDayOHLC(Close);
+                AddChartIndicator(priorDayOHLC);
+            }
+            else if (State == State.Realtime)
+            {
+                // Inicializar autorización cuando empiece tiempo real
                 Task.Run(async () => 
                 {
                     bool authResult = await ValidateAuthorization();
                 });
-                
-                priorDayOHLC = PriorDayOHLC(Close);
-                AddChartIndicator(priorDayOHLC);
             }
 
         }
@@ -130,56 +135,68 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
 
         protected override void OnBarUpdate()
         {
-
-            
-            // PROTECCIÓN: Solo verificar autorización en tiempo real, no en datos históricos
-            if (State == State.Realtime && !isAuthorized)
+            // RESET AUTOMÁTICO DIARIO: Detectar cambio de día para resetear variables
+            DateTime currentDay = Times[0][0].Date;
+            if (lastTradingDay != DateTime.MinValue && currentDay > lastTradingDay)
             {
-                // Mostrar mensaje de no autorizado en el gráfico
-                if (!unauthorizedMessageShown)
+                // Nuevo día detectado - resetear todas las variables de trading
+                orderPlaced = false;
+                priorClose = 0;
+                entryOrder = null;
+                entryPrice = 0;
+                breakEvenMoved = false;
+                advancedTrail1Moved = false;
+                advancedTrail2Moved = false;
+                startLineDrawn = false;
+                endLineDrawn = false;
+                
+                Print($"🔄 NUEVO DÍA DETECTADO: {currentDay:yyyy-MM-dd} | Reset completo de variables");
+            }
+            lastTradingDay = currentDay;
+            
+            // SEPARACIÓN COMPLETA: Autorización solo afecta órdenes en tiempo real
+            bool isHistoricalData = State == State.Historical;
+            bool isRealTime = State == State.Realtime;
+            
+            // Manejo de autorización solo en tiempo real
+            if (isRealTime)
+            {
+                // Iniciar validación si no se ha hecho
+                if (lastAuthCheck == DateTime.MinValue)
+                {
+                    lastAuthCheck = DateTime.Now;
+                    Task.Run(async () => { await ValidateAuthorization(); });
+                }
+                
+                // Mostrar mensajes de autorización
+                if (!isAuthorized && !unauthorizedMessageShown)
                 {
                     Draw.TextFixed(this, "UnauthorizedMessage", "🛑 BOT NO AUTORIZADO\n⏳ Esperando aprobación del desarrollador", 
                                  TextPosition.Center, Brushes.Red, new SimpleFont("Arial", 16), 
                                  Brushes.Black, Brushes.Yellow, 10);
                     unauthorizedMessageShown = true;
-                    Print("🛑 Mensaje de no autorizado mostrado en gráfico");
+                    Print("🛑 Bot no autorizado - solo mostrará histórico");
                 }
                 
-                // Verificar autorización cada 30 segundos
+                if (isAuthorized && !authorizedMessageShown)
+                {
+                    RemoveDrawObject("UnauthorizedMessage");
+                    Draw.TextFixed(this, "AuthorizedMessage", "✅ BOT AUTORIZADO\n🚀 Sistema activo y operativo", 
+                                 TextPosition.TopRight, Brushes.LimeGreen, new SimpleFont("Arial", 14), 
+                                 Brushes.Black, Brushes.DarkGreen, 5);
+                    authorizedMessageShown = true;
+                    Task.Run(async () => { await Task.Delay(10000); RemoveDrawObject("AuthorizedMessage"); });
+                }
+                
+                // Verificar autorización periódicamente
                 if (DateTime.Now.Subtract(lastAuthCheck).TotalSeconds >= 30)
                 {
                     lastAuthCheck = DateTime.Now;
-                    Print("🔍 Verificando autorización en tiempo real...");
-                    Task.Run(async () => 
-                    {
-                        await ValidateAuthorization();
-                    });
+                    Task.Run(async () => { await ValidateAuthorization(); });
                 }
-                return; // Salir si no está autorizado en tiempo real
             }
             
-            // Mostrar mensaje de autorizado cuando se autoriza
-            if (State == State.Realtime && isAuthorized && !authorizedMessageShown)
-            {
-                // Quitar mensaje de no autorizado
-                RemoveDrawObject("UnauthorizedMessage");
-                
-                // Mostrar mensaje de autorizado
-                Draw.TextFixed(this, "AuthorizedMessage", "✅ BOT AUTORIZADO\n🚀 Sistema activo y operativo", 
-                             TextPosition.TopRight, Brushes.LimeGreen, new SimpleFont("Arial", 14), 
-                             Brushes.Black, Brushes.DarkGreen, 5);
-                authorizedMessageShown = true;
-                
-                // Auto-quitar mensaje después de 10 segundos
-                Task.Run(async () => 
-                {
-                    await Task.Delay(10000);
-                    RemoveDrawObject("AuthorizedMessage");
-                });
-            }
-            
-            // Para datos históricos, permitir procesamiento completo (sin verificar autorización)
-            // Continuar con la lógica normal para que dibuje los trades históricos
+            // PROCESAMIENTO CONTINÚA SIEMPRE (histórico y tiempo real)
             
 
             
@@ -202,7 +219,7 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                 if (priorDayOHLC.PriorClose[0] != 0)
                 {
                     priorClose = priorDayOHLC.PriorClose[0];
-                    Print($"🕘 [{nyTime:HH:mm} NY] PriorClose capturado: {priorClose:F2}");
+                    Print($"🕘 [{nyTime:yyyy-MM-dd HH:mm} NY] PriorClose capturado: {priorClose:F2}");
                 }
             }
             
@@ -218,7 +235,19 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
             
             if (!(timeOk && noOrderPlaced && hasPriorClose))
             {
+                // Debug: Mostrar por qué no se ejecuta (solo una vez por día)
+                if (timeOk && !noOrderPlaced && CurrentBar % 100 == 0)
+                {
+                    Print($"⏸️ [{nyTime:yyyy-MM-dd HH:mm}] Ya se ejecutó orden hoy | orderPlaced={orderPlaced}");
+                }
                 return; // Salir silenciosamente si no cumple condiciones
+            }
+            
+            // DEBUG DURANTE HORARIO DE TRADING (8-15 NY) - Solo cuando bot está activo
+            if (timeOk && CurrentBar % 50 == 0) // Debug cada 50 barras durante horario activo
+            {
+                string mode = isHistoricalData ? "BACKTEST" : (isRealTime ? "TIEMPO REAL" : "PROCESANDO");
+                Print($"🤖 BOT ACTIVO [{nyTime:yyyy-MM-dd HH:mm:ss} NY] | Modo: {mode} | PriorClose: {priorClose:F2} | Precio actual: {Close[0]:F2}");
             }
             
             if (timeOk && !orderPlaced && priorClose != 0)
@@ -229,30 +258,16 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                     Draw.VerticalLine(this, "TradingStart_" + CurrentBar, 0, Brushes.White, DashStyleHelper.Solid, 2);
                     Draw.TextFixed(this, "TradingStartText", "🤖 BOT INICIO - 8:00 NY", TextPosition.TopLeft, Brushes.White, new SimpleFont("Arial", 12), Brushes.Transparent, Brushes.Transparent, 0);
                     startLineDrawn = true;
-                    Print("🟢 INICIO ventana de trading - 8:00 NY");
+                    string mode = isHistoricalData ? "BACKTEST" : (isRealTime ? "TIEMPO REAL" : "PROCESANDO");
+                    Print($"🟢 BOT ACTIVADO A LAS 8:00 NY [{nyTime:yyyy-MM-dd HH:mm:ss}] | Modo: {mode}");
+                    Print($"📊 DATOS INICIALES: PriorClose={priorClose:F2} | Precio actual={Close[0]:F2} | Diferencia={(Close[0] - priorClose):F2} puntos");
                 }
 
-                double tickValue = Instrument.MasterInstrument.PointValue;
+                // Stop Loss y Targets FIJOS según especificaciones
+                stopTicks = 60;    // Stop fijo en 60 ticks
+                double breakEvenTicks = 115; // Break even en 115 ticks para targets 120t y 180t
                 
-                // Ajuste automático para Micros - reducir riesgo proporcionalmente
-                double adjustedRisk = riskDollars;
-                string instrumentName = Instrument.MasterInstrument.Name.ToUpper();
-                if (instrumentName.Contains("MES") || instrumentName.Contains("MNQ") || instrumentName.Contains("MYM") || instrumentName.Contains("M2K") || instrumentName.Contains("MICRO") || tickValue <= 5)
-                {
-                    // Para Micros, usar 1/10 del riesgo (equivalente a Minis)
-                    adjustedRisk = riskDollars / 10.0;
-                    Print($"🔍 MICRO detectado: {instrumentName} | PointValue: ${tickValue} | Riesgo ajustado: ${adjustedRisk} (era ${riskDollars})");
-                }
-                else
-                {
-                    Print($"📊 MINI detectado: {instrumentName} | PointValue: ${tickValue} | Riesgo: ${adjustedRisk}");
-                }
-                
-                double stopSizePoints = adjustedRisk / tickValue;
-                stopTicks = stopSizePoints / TickSize;
-                takeProfitTicks = stopTicks * rewardRatio;
-                
-                Print($"💰 Cálculo: ${adjustedRisk} = {stopTicks:F1} ticks | TickSize: {TickSize} | PointValue: ${tickValue}");
+                Print($"�️ CONFIGURACIÓN FIJA: Stop=60t | Targets=60t/120t/180t | BreakEven=115t");
 
                 // Calcular distribución de contratos más precisa
                 contracts60Percent = (int)Math.Round(ContractQuantity * 0.6);  // 60% = 3 contratos
@@ -269,86 +284,111 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
 
                 Print($"📊 Distribución contratos: 60%={contracts60Percent} | 20%={contracts20Percent1} | 20%={contracts20Percent2} | Total={ContractQuantity}");
 
-                // Determinar dirección y calcular entrada con offset de 20 ticks hacia el lado opuesto
+                // Determinar dirección y calcular entrada - LÓGICA DE REBOTES
                 if (Close[0] > priorClose)
                 {
-                    // Precio viene de abajo → LONG, entrada 20 ticks DEBAJO del priorClose (lado opuesto)
-                    entryPrice = priorClose - (20 * TickSize);
+                    // Precio ARRIBA del priorClose → buscar REBOTE hacia abajo → LONG entry 20 ticks ABAJO del priorClose
+                    entryPrice = priorClose - (20 * TickSize);  // 20 ticks = 20 × 0.25 = 5 puntos
                     
-                    // Establecer targets ANTES de la entrada (como ATM Strategy)
-                    double oneToOneTarget = entryPrice + (stopTicks * TickSize);
-                    double twoToOneTarget = entryPrice + (stopTicks * TickSize * 2);
-                    double threeToOneTarget = entryPrice + (stopTicks * TickSize * 3);
+                    // DEBUG: Mostrar cálculo de entrada
+                    Print($"🔢 DEBUG LONG: PriorClose={priorClose:F2} | TickSize={TickSize:F2} | 20 ticks={(20 * TickSize):F2} puntos | Entry={entryPrice:F2}");
                     
-                    // Crear órdenes de entrada LONG con targets predefinidos (solo si hay contratos)
-                    if (contracts60Percent > 0)
+                    // Targets fijos: 60 ticks, 120 ticks, 180 ticks desde entrada (usar CalculationMode.Ticks)
+                    // No calcular precios manualmente - NinjaTrader lo hará automáticamente
+                    
+                    // CONTROL DE ÓRDENES: Histórico siempre ejecuta, tiempo real solo si está autorizado
+                    bool canPlaceOrders = isHistoricalData || (isRealTime && isAuthorized);
+                    
+                    if (canPlaceOrders)
                     {
-                        EnterLongLimit(0, true, contracts60Percent, entryPrice, "Entry60");
-                        SetStopLoss("Entry60", CalculationMode.Ticks, stopTicks, false);
-                        SetProfitTarget("Entry60", CalculationMode.Price, oneToOneTarget);
-                    }
-                    
-                    if (contracts20Percent1 > 0)
-                    {
-                        EnterLongLimit(0, true, contracts20Percent1, entryPrice, "Entry20_1");
-                        SetStopLoss("Entry20_1", CalculationMode.Ticks, stopTicks, false);
-                        SetProfitTarget("Entry20_1", CalculationMode.Price, twoToOneTarget);
-                    }
-                    
-                    if (contracts20Percent2 > 0)
-                    {
-                        EnterLongLimit(0, true, contracts20Percent2, entryPrice, "Entry20_2");
-                        SetStopLoss("Entry20_2", CalculationMode.Ticks, stopTicks, false);
-                        SetProfitTarget("Entry20_2", CalculationMode.Price, threeToOneTarget);
+                        // Crear órdenes LONG con targets y stops correctos
+                        if (contracts60Percent > 0)
+                        {
+                            EnterLongLimit(0, true, contracts60Percent, entryPrice, "Entry60"); // Siempre limit para LONG
+                                
+                            SetStopLoss("Entry60", CalculationMode.Ticks, 60, false);  // Stop fijo en 60 ticks
+                            SetProfitTarget("Entry60", CalculationMode.Ticks, 60); // Target 60 ticks
+                        }
+                        
+                        if (contracts20Percent1 > 0)
+                        {
+                            EnterLongLimit(0, true, contracts20Percent1, entryPrice, "Entry20_1"); // Siempre limit para LONG
+                                
+                            SetStopLoss("Entry20_1", CalculationMode.Ticks, 60, false);  // Stop fijo en 60 ticks
+                            SetProfitTarget("Entry20_1", CalculationMode.Ticks, 120); // Target 120 ticks
+                        }
+                        
+                        if (contracts20Percent2 > 0)
+                        {
+                            EnterLongLimit(0, true, contracts20Percent2, entryPrice, "Entry20_2"); // Siempre limit para LONG
+                                
+                            SetStopLoss("Entry20_2", CalculationMode.Ticks, 60, false);  // Stop fijo en 60 ticks
+                            SetProfitTarget("Entry20_2", CalculationMode.Ticks, 180); // Target 180 ticks
+                        }
                     }
                     
                     orderPlaced = true;
                     entryTime = nyTime;
-                    Print($"✅ LONG LIMIT distribuido: {contracts60Percent}@1:1 + {contracts20Percent1}@2:1 + {contracts20Percent2}@3:1 | Entry: {entryPrice:F2}");
-                    Print($"🎯 Targets: 1:1={oneToOneTarget:F2} | 2:1={twoToOneTarget:F2} | 3:1={threeToOneTarget:F2}");
-                    Print($"🛡️ Stop Loss: {stopTicks:F1} ticks = ${stopTicks * TickSize * tickValue:F2}");
+                    string orderType = "LIMIT"; // Siempre LIMIT
+                    string status = canPlaceOrders ? "EJECUTADO" : "BLOQUEADO (sin autorización)";
+                    Print($"✅ LONG {orderType} {status}: {contracts60Percent}@60t + {contracts20Percent1}@120t + {contracts20Percent2}@180t | Precio:{Close[0]:F2} PriorClose:{priorClose:F2} Entry:{entryPrice:F2}");
+                    Print($"🎯 Targets LONG: Entry+60t | Entry+120t | Entry+180t");
+                    Print($"🛡️ Stop Loss: 60 ticks | Break Even: 115 ticks (para 120t y 180t)");
                 }
                 else if (Close[0] < priorClose)
                 {
-                    // Precio viene de arriba → SHORT, entrada 20 ticks ARRIBA del priorClose (lado opuesto)
-                    entryPrice = priorClose + (20 * TickSize);
+                    // Precio ABAJO del priorClose → buscar REBOTE hacia arriba → SHORT entry 20 ticks ARRIBA del priorClose
+                    entryPrice = priorClose + (20 * TickSize);  // 20 ticks = 20 × 0.25 = 5 puntos
                     
-                    // Establecer targets ANTES de la entrada (como ATM Strategy)
-                    double oneToOneTarget = entryPrice - (stopTicks * TickSize);
-                    double twoToOneTarget = entryPrice - (stopTicks * TickSize * 2);
-                    double threeToOneTarget = entryPrice - (stopTicks * TickSize * 3);
+                    // DEBUG: Mostrar cálculo de entrada
+                    Print($"🔢 DEBUG SHORT: PriorClose={priorClose:F2} | TickSize={TickSize:F2} | 20 ticks={(20 * TickSize):F2} puntos | Entry={entryPrice:F2}");
                     
-                    // Crear órdenes de entrada SHORT con targets predefinidos (solo si hay contratos)
-                    if (contracts60Percent > 0)
+                    // Targets fijos: 60 ticks, 120 ticks, 180 ticks desde entrada (usar CalculationMode.Ticks)
+                    // No calcular precios manualmente - NinjaTrader lo hará automáticamente
+                    
+                    // CONTROL DE ÓRDENES: Histórico siempre ejecuta, tiempo real solo si está autorizado
+                    bool canPlaceOrders = isHistoricalData || (isRealTime && isAuthorized);
+                    
+                    if (canPlaceOrders)
                     {
-                        EnterShortLimit(0, true, contracts60Percent, entryPrice, "Entry60");
-                        SetStopLoss("Entry60", CalculationMode.Ticks, stopTicks, false);
-                        SetProfitTarget("Entry60", CalculationMode.Price, oneToOneTarget);
-                    }
-                    
-                    if (contracts20Percent1 > 0)
-                    {
-                        EnterShortLimit(0, true, contracts20Percent1, entryPrice, "Entry20_1");
-                        SetStopLoss("Entry20_1", CalculationMode.Ticks, stopTicks, false);
-                        SetProfitTarget("Entry20_1", CalculationMode.Price, twoToOneTarget);
-                    }
-                    
-                    if (contracts20Percent2 > 0)
-                    {
-                        EnterShortLimit(0, true, contracts20Percent2, entryPrice, "Entry20_2");
-                        SetStopLoss("Entry20_2", CalculationMode.Ticks, stopTicks, false);
-                        SetProfitTarget("Entry20_2", CalculationMode.Price, threeToOneTarget);
+                        // Crear órdenes SHORT con targets y stops correctos
+                        if (contracts60Percent > 0)
+                        {
+                            EnterShortLimit(0, true, contracts60Percent, entryPrice, "Entry60"); // Siempre limit para SHORT
+                                
+                            SetStopLoss("Entry60", CalculationMode.Ticks, 60, false);  // Stop fijo en 60 ticks
+                            SetProfitTarget("Entry60", CalculationMode.Ticks, 60); // Target 60 ticks
+                        }
+                        
+                        if (contracts20Percent1 > 0)
+                        {
+                            EnterShortLimit(0, true, contracts20Percent1, entryPrice, "Entry20_1"); // Siempre limit para SHORT
+                                
+                            SetStopLoss("Entry20_1", CalculationMode.Ticks, 60, false);  // Stop fijo en 60 ticks
+                            SetProfitTarget("Entry20_1", CalculationMode.Ticks, 120); // Target 120 ticks
+                        }
+                        
+                        if (contracts20Percent2 > 0)
+                        {
+                            EnterShortLimit(0, true, contracts20Percent2, entryPrice, "Entry20_2"); // Siempre limit para SHORT
+                                
+                            SetStopLoss("Entry20_2", CalculationMode.Ticks, 60, false);  // Stop fijo en 60 ticks
+                            SetProfitTarget("Entry20_2", CalculationMode.Ticks, 180); // Target 180 ticks
+                        }
                     }
                     
                     orderPlaced = true;
                     entryTime = nyTime;
-                    Print($"✅ SHORT LIMIT distribuido: {contracts60Percent}@1:1 + {contracts20Percent1}@2:1 + {contracts20Percent2}@3:1 | Entry: {entryPrice:F2}");
-                    Print($"🎯 Targets: 1:1={oneToOneTarget:F2} | 2:1={twoToOneTarget:F2} | 3:1={threeToOneTarget:F2}");
-                    Print($"🛡️ Stop Loss: {stopTicks:F1} ticks = ${stopTicks * TickSize * tickValue:F2}");
+                    string orderType = "LIMIT"; // Siempre LIMIT
+                    string status = canPlaceOrders ? "EJECUTADO" : "BLOQUEADO (sin autorización)";
+                    Print($"✅ SHORT {orderType} {status}: {contracts60Percent}@60t + {contracts20Percent1}@120t + {contracts20Percent2}@180t | Precio:{Close[0]:F2} PriorClose:{priorClose:F2} Entry:{entryPrice:F2}");
+                    Print($"🎯 Targets SHORT: Entry-60t | Entry-120t | Entry-180t");
+                    Print($"🛡️ Stop Loss: 60 ticks | Break Even: 115 ticks (para 120t y 180t)");
                 }
                 else
                 {
                     Print($"⏸️ PRECIO IGUAL: Close[0]={Close[0]:F2} == PriorClose={priorClose:F2} - Esperando movimiento");
+                    Print($"🔍 Info: Precio actual vs PriorClose | Diferencia: {(Close[0] - priorClose):F2} puntos");
                 }
             }
 
@@ -358,7 +398,7 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                 Draw.VerticalLine(this, "TradingEnd_" + CurrentBar, 0, Brushes.White, DashStyleHelper.Solid, 2);
                 Draw.TextFixed(this, "TradingEndText", "🛑 BOT FIN - 15:00 NY", TextPosition.TopRight, Brushes.White, new SimpleFont("Arial", 12), Brushes.Transparent, Brushes.Transparent, 0);
                 endLineDrawn = true;
-                Print("🔴 FIN ventana de trading - 15:00 NY");
+                Print($"🔴 FIN ventana de trading [{nyTime:yyyy-MM-dd}] - 15:00 NY");
             }
 
             if (Position.MarketPosition != MarketPosition.Flat)
