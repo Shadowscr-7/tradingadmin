@@ -11,7 +11,24 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Xml.Serialization;
+                if (authorized)
+                {
+                    isAuthorized = true;
+                    Print("✅ ¡BOT AUTORIZADO! Iniciando sistema de trading...");
+                    Print("🚀 El bot está ahora completamente activo y operativo.");
+                    return true;
+                }
+                else
+                {
+                    // Solo mostrar mensaje si no se mostró antes
+                    if (!registrationSent)
+                    {
+                        Print("⏳ Esperando autorización del desarrollador...");
+                        Print($"📧 Solicitud enviada para: {userInfo.UserName} ({userInfo.ComputerName})");
+                        Print("💬 El bot estará activo una vez que seas autorizado.");
+                    }
+                    return false;
+                }Xml.Serialization;
 using System.Security.Cryptography;
 using System.Management;
 using System.IO;
@@ -36,6 +53,7 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
         private bool isAuthorized = false;
         private bool registrationSent = false;
         private readonly DateTime expirationDate = new DateTime(2025, 12, 31);
+        private DateTime lastAuthCheck = DateTime.MinValue;
         
         // URL de tu servidor de autorización (puedes usar Firebase, Supabase, o tu propio servidor)
         private readonly string authServerUrl = "https://tradingadmin-q36j.vercel.app/api";
@@ -126,9 +144,18 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
 
         protected override void OnBarUpdate()
         {
-            // PROTECCIÓN: Verificar autorización antes de ejecutar
+            // PROTECCIÓN: Verificar autorización periódicamente
             if (!isAuthorized)
             {
+                // Verificar autorización cada 30 segundos
+                if (DateTime.Now.Subtract(lastAuthCheck).TotalSeconds >= 30)
+                {
+                    lastAuthCheck = DateTime.Now;
+                    Task.Run(async () => 
+                    {
+                        await ValidateAuthorization();
+                    });
+                }
                 return; // Salir silenciosamente si no está autorizado
             }
             
