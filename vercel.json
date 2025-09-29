@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "name": "closecustom-auth",
+  "builds": [
+    {
+      "src": "tradingadmin/auth_system/server-vercel.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "tradingadmin/auth_system/server-vercel.js"
+    },
+    {
+      "src": "/admin",
+      "dest": "tradingadmin/auth_system/server-vercel.js"
+    },
+    {
+      "src": "/",
+      "dest": "tradingadmin/auth_system/server-vercel.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "tradingadmin/auth_system/server-vercel.js": {
+      "maxDuration": 30
+    }
+  }
+}
