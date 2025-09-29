@@ -205,6 +205,16 @@
             transform: translateY(-2px);
         }
         
+        .btn-delete {
+            background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);
+            color: white;
+        }
+        
+        .btn-delete:hover {
+            background: linear-gradient(135deg, #7d3c98 0%, #8e44ad 100%);
+            transform: translateY(-2px);
+        }
+        
         .status {
             padding: 8px 15px;
             border-radius: 20px;
@@ -360,12 +370,12 @@
                 <div class="request-card">
                     <div class="request-header">
                         <div class="user-info">
-                            <div class="user-name">👤 ${request.userName}</div>
-                            <div class="computer-name">💻 ${request.computerName}</div>
+                            <div class="user-name">👤 ${request.user_name || request.userName}</div>
+                            <div class="computer-name">💻 ${request.computer_name || request.computerName}</div>
                         </div>
                         <div>
                             <span class="status status-${request.status}">${getStatusText(request.status)}</span>
-                            <div class="request-date">📅 ${formatDate(request.requestDate)}</div>
+                            <div class="request-date">📅 ${formatDate(request.request_date || request.requestDate)}</div>
                         </div>
                     </div>
                     
@@ -376,11 +386,11 @@
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">🤖 Bot</div>
-                            <div class="detail-value">${request.botName} v${request.botVersion}</div>
+                            <div class="detail-value">${request.bot_name || request.botName} v${request.bot_version || request.botVersion}</div>
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">🌐 Usuario Windows</div>
-                            <div class="detail-value">${request.windowsUser || 'N/A'}</div>
+                            <div class="detail-value">${request.windows_user || request.windowsUser || 'N/A'}</div>
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">📊 Estado</div>
@@ -395,6 +405,11 @@
                             </button>
                             <button class="btn btn-reject" onclick="rejectUser('${request.hwid}')">
                                 ❌ Rechazar
+                            </button>
+                        ` : ''}
+                        ${request.status === 'approved' ? `
+                            <button class="btn btn-delete" onclick="deleteUser('${request.hwid}')">
+                                🗑️ Eliminar Autorización
                             </button>
                         ` : ''}
                         <button class="btn btn-info" onclick="showUserDetails('${request.hwid}')">
@@ -454,6 +469,37 @@
                     alert('❌ Error rechazando usuario');
                 }
             } catch (error) {
+                alert('❌ Error de conexión');
+            }
+        }
+        
+        async function deleteUser(hwid) {
+            // Pedir password de administrador
+            const adminPassword = prompt('Ingresa el password de administrador para ELIMINAR la autorización:');
+            if (!adminPassword) return;
+            
+            if (!confirm('¿¿Estás SEGURO de eliminar esta autorización?\n\nEl usuario deberá solicitar acceso nuevamente.')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete-user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        hwid: hwid,
+                        adminPassword: adminPassword
+                    })
+                });
+                
+                const responseData = await response.json();
+                
+                if (response.ok) {
+                    alert('✅ Autorización eliminada correctamente\n\nEl usuario deberá solicitar acceso nuevamente.');
+                    loadRequests();
+                } else {
+                    alert(`❌ Error: ${responseData.error || 'Error eliminando autorización'}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
                 alert('❌ Error de conexión');
             }
         }

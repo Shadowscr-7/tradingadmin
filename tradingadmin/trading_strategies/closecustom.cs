@@ -3,47 +3,30 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Management;
+using System.Net.Http;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
-                if (authorized)
-                {
-                    isAuthorized = true;
-                    Print("✅ ¡BOT AUTORIZADO! Iniciando sistema de trading...");
-                    Print("🚀 El bot está ahora completamente activo y operativo.");
-                    return true;
-                }
-                else
-                {
-                    // Solo mostrar mensaje si no se mostró antes
-                    if (!registrationSent)
-                    {
-                        Print("⏳ Esperando autorización del desarrollador...");
-                        Print($"📧 Solicitud enviada para: {userInfo.UserName} ({userInfo.ComputerName})");
-                        Print("💬 El bot estará activo una vez que seas autorizado.");
-                    }
-                    return false;
-                }Xml.Serialization;
-using System.Security.Cryptography;
-using System.Management;
-using System.IO;
+using System.Xml.Serialization;
 using NinjaTrader.Cbi;
+using NinjaTrader.Core.FloatingPoint;
+using NinjaTrader.Data;
 using NinjaTrader.Gui;
 using NinjaTrader.Gui.Chart;
 using NinjaTrader.Gui.SuperDom;
 using NinjaTrader.Gui.Tools;
-using NinjaTrader.Data;
 using NinjaTrader.NinjaScript;
-using NinjaTrader.Core.FloatingPoint;
-using NinjaTrader.NinjaScript.Indicators;
 using NinjaTrader.NinjaScript.DrawingTools;
+using NinjaTrader.NinjaScript.Indicators;
 using Newtonsoft.Json;
-using System.Net.Http;
 
 namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
 {
@@ -83,6 +66,8 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
         // Variables para indicadores visuales
         private bool startLineDrawn = false;
         private bool endLineDrawn = false;
+        private bool unauthorizedMessageShown = false;
+        private bool authorizedMessageShown = false;
 
         // Configuración fija (no modificable por usuario)
         private bool UseBreakEven = true;
@@ -117,12 +102,13 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                 // VALIDACIÓN DE AUTORIZACIÓN ASYNC
                 Task.Run(async () => 
                 {
-                    await ValidateAuthorization();
+                    bool authResult = await ValidateAuthorization();
                 });
                 
                 priorDayOHLC = PriorDayOHLC(Close);
                 AddChartIndicator(priorDayOHLC);
             }
+
         }
 
         protected void OnOrderUpdate(Order order, double limitPrice, double stopPrice,
@@ -144,34 +130,98 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
 
         protected override void OnBarUpdate()
         {
-            // PROTECCIÓN: Verificar autorización periódicamente
-            if (!isAuthorized)
+
+            
+            // PROTECCIÓN: Solo verificar autorización en tiempo real, no en datos históricos
+            if (State == State.Realtime && !isAuthorized)
             {
+                // Mostrar mensaje de no autorizado en el gráfico
+                if (!unauthorizedMessageShown)
+                {
+                    Draw.TextFixed(this, "UnauthorizedMessage", "🛑 BOT NO AUTORIZADO\n⏳ Esperando aprobación del desarrollador", 
+                                 TextPosition.Center, Brushes.Red, new SimpleFont("Arial", 16), 
+                                 Brushes.Black, Brushes.Yellow, 10);
+                    unauthorizedMessageShown = true;
+                    Print("🛑 Mensaje de no autorizado mostrado en gráfico");
+                }
+                
                 // Verificar autorización cada 30 segundos
                 if (DateTime.Now.Subtract(lastAuthCheck).TotalSeconds >= 30)
                 {
                     lastAuthCheck = DateTime.Now;
+                    Print("🔍 Verificando autorización en tiempo real...");
                     Task.Run(async () => 
                     {
                         await ValidateAuthorization();
                     });
                 }
-                return; // Salir silenciosamente si no está autorizado
+                return; // Salir si no está autorizado en tiempo real
             }
             
+            // Mostrar mensaje de autorizado cuando se autoriza
+            if (State == State.Realtime && isAuthorized && !authorizedMessageShown)
+            {
+                // Quitar mensaje de no autorizado
+                RemoveDrawObject("UnauthorizedMessage");
+                
+                // Mostrar mensaje de autorizado
+                Draw.TextFixed(this, "AuthorizedMessage", "✅ BOT AUTORIZADO\n🚀 Sistema activo y operativo", 
+                             TextPosition.TopRight, Brushes.LimeGreen, new SimpleFont("Arial", 14), 
+                             Brushes.Black, Brushes.DarkGreen, 5);
+                authorizedMessageShown = true;
+                
+                // Auto-quitar mensaje después de 10 segundos
+                Task.Run(async () => 
+                {
+                    await Task.Delay(10000);
+                    RemoveDrawObject("AuthorizedMessage");
+                });
+            }
+            
+            // Para datos históricos, permitir procesamiento completo (sin verificar autorización)
+            // Continuar con la lógica normal para que dibuje los trades históricos
+            
+
+            
             if (BarsInProgress != 0 || CurrentBar < 20)
+            {
+
                 return;
+            }
+            
+
 
             DateTime nyTime = Times[0][0].ToUniversalTime().AddHours(-4);
             int currentTime = ToTime(nyTime);
+            
 
-            if (nyTime.Hour == 8 && nyTime.Minute == 0 && priorClose == 0)
+
+            // Capturar priorClose más temprano - cualquier hora después de las 6 AM
+            if (nyTime.Hour >= 6 && priorClose == 0)
             {
-                priorClose = priorDayOHLC.PriorClose[0];
-                Print($"🕘 [8:00 NY] PriorClose capturado desde indicador: {priorClose:F2}");
+                if (priorDayOHLC.PriorClose[0] != 0)
+                {
+                    priorClose = priorDayOHLC.PriorClose[0];
+                    Print($"🕘 [{nyTime:HH:mm} NY] PriorClose capturado: {priorClose:F2}");
+                }
             }
+            
 
-            if (currentTime >= 80000  && currentTime <= 150000  && !orderPlaced && priorClose != 0)
+
+            // DEBUG: Verificar todas las condiciones
+            bool timeOk = currentTime >= 80000 && currentTime <= 150000;
+            bool noOrderPlaced = !orderPlaced;
+            bool hasPriorClose = priorClose != 0;
+            
+            // MODO PRODUCCIÓN: Solo trading en horario 8:00-15:00 NY
+            bool testMode = false; // Modo producción activado
+            
+            if (!(timeOk && noOrderPlaced && hasPriorClose))
+            {
+                return; // Salir silenciosamente si no cumple condiciones
+            }
+            
+            if (timeOk && !orderPlaced && priorClose != 0)
             {
                 // Dibujar línea de inicio de trading si no se ha dibujado
                 if (!startLineDrawn)
@@ -296,6 +346,10 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                     Print($"🎯 Targets: 1:1={oneToOneTarget:F2} | 2:1={twoToOneTarget:F2} | 3:1={threeToOneTarget:F2}");
                     Print($"🛡️ Stop Loss: {stopTicks:F1} ticks = ${stopTicks * TickSize * tickValue:F2}");
                 }
+                else
+                {
+                    Print($"⏸️ PRECIO IGUAL: Close[0]={Close[0]:F2} == PriorClose={priorClose:F2} - Esperando movimiento");
+                }
             }
 
             // Dibujar línea de fin de trading cuando se cierre la ventana
@@ -384,6 +438,10 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                 {
                     isAuthorized = true;
                     Print("✅ Bot autorizado. ¡Bienvenido!");
+                    
+                    // Limpiar flag para mostrar mensaje de autorizado
+                    authorizedMessageShown = false;
+                    
                     return true;
                 }
                 else
@@ -424,7 +482,16 @@ namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
                     {
                         string responseData = await response.Content.ReadAsStringAsync();
                         var result = JsonConvert.DeserializeObject<dynamic>(responseData);
-                        return result.authorized == true;
+                        bool authorized = result.authorized == true;
+                        
+                        // IMPORTANTE: Si no está autorizado, resetear registrationSent 
+                        // para permitir re-envío de solicitudes (por ejemplo, si se eliminó la autorización)
+                        if (!authorized)
+                        {
+                            registrationSent = false;
+                        }
+                        
+                        return authorized;
                     }
                 }
             }

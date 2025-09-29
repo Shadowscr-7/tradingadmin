@@ -390,6 +390,63 @@ app.post('/api/reject-user', async (req, res) => {
     }
 });
 
+// 6. Eliminar autorización (nuevo)
+app.post('/api/delete-user', async (req, res) => {
+    if (!supabase) {
+        return res.status(503).json({ error: 'Base de datos no configurada' });
+    }
+
+    try {
+        const { hwid, adminPassword } = req.body;
+        
+        // Verificar password admin
+        if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+            return res.status(401).json({ error: 'Password admin incorrecto' });
+        }
+        
+        // Obtener datos del usuario antes de eliminarlo
+        const { data: user, error: selectError } = await supabase
+            .from('trading_user_requests')
+            .select('*')
+            .eq('hwid', hwid)
+            .single();
+            
+        if (selectError || !user) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+        
+        // Eliminar el usuario completamente
+        const { error: deleteError } = await supabase
+            .from('trading_user_requests')
+            .delete()
+            .eq('hwid', hwid);
+
+        if (deleteError) {
+            console.error('❌ Error eliminando usuario:', deleteError.message);
+            return res.status(500).json({ error: 'Error eliminando usuario' });
+        }
+
+        console.log(`🗑️ Usuario eliminado: ${hwid} (${user.user_name})`);
+        
+        // Enviar notificación por Telegram
+        await sendTelegramNotification({
+            userName: user.user_name,
+            computerName: user.computer_name,
+            hwid: hwid.substring(0, 8) + '...',
+            action: 'ELIMINADO'
+        });
+        
+        res.json({ 
+            success: true, 
+            message: 'Autorización eliminada correctamente' 
+        });
+
+    } catch (error) {
+        console.error('❌ Error eliminando usuario:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
 //=============================================================================
 // FUNCIONES AUXILIARES
 //=============================================================================
@@ -409,6 +466,12 @@ async function sendTelegramNotification(data) {
                      `💻 PC: ${data.computerName}\n` +
                      `🔐 HWID: \`${data.hwid}\`\n\n` +
                      `El usuario ya puede usar el bot.`;
+        } else if (data.action === 'ELIMINADO') {
+            message = `🗑️ *AUTORIZACIÓN ELIMINADA*\n\n` +
+                     `👤 Usuario: ${data.userName}\n` +
+                     `💻 PC: ${data.computerName}\n` +
+                     `🔐 HWID: \`${data.hwid}\`\n\n` +
+                     `El usuario deberá solicitar autorización nuevamente.`;
         } else {
             message = `🔔 *NUEVA SOLICITUD DE ACCESO*\n\n` +
                      `👤 Usuario: ${data.userName}\n` +
@@ -457,6 +520,7 @@ app.get('/', (req, res) => {
             'GET /api/get-requests': 'Obtener solicitudes (admin)',
             'POST /api/approve-user': 'Aprobar usuario (admin)',
             'POST /api/reject-user': 'Rechazar usuario (admin)',
+            'POST /api/delete-user': 'Eliminar autorización (admin)',
             'GET /admin': 'Panel de administración'
         }
     });
