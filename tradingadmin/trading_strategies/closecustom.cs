@@ -28,7 +28,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 using Newtonsoft.Json;
 using System.Net.Http;
 
-namespace NinjaTrader.NinjaScript.Strategies
+namespace NinjaTrader.NinjaScript.Strategies.TradingSimple
 {
     public class closecustom : Strategy
     {
@@ -66,25 +66,16 @@ namespace NinjaTrader.NinjaScript.Strategies
         private bool startLineDrawn = false;
         private bool endLineDrawn = false;
 
-        [NinjaScriptProperty]
-        [Display(Name = "Activar BreakEven", GroupName = "Gestión", Order = 1)]
-        public bool UseBreakEven { get; set; }
+        // Configuración fija (no modificable por usuario)
+        private bool UseBreakEven = true;
+        private int BreakEvenTriggerRatio = 1;
+        private bool UseAdvancedTrail = true;
+        private double rewardRatio = 3;
 
+        // Solo esta propiedad será visible al usuario
         [NinjaScriptProperty]
-        [Display(Name = "BE Trigger Ratio (1 = 1:1, 2 = 2:1)", GroupName = "Gestión", Order = 2)]
-        public int BreakEvenTriggerRatio { get; set; }
-
-        [NinjaScriptProperty]
-        [Display(Name = "Activar trailing avanzado (BE -> 1:1 -> 2:1)", GroupName = "Gestión", Order = 3)]
-        public bool UseAdvancedTrail { get; set; }
-
-		[NinjaScriptProperty]
-        [Display(Name = "ratio", GroupName = "Gestión", Order = 4)]
-        public double rewardRatio { get; set; } = 3;
-
-        [NinjaScriptProperty]
-        [Display(Name = "Cantidad de Contratos", GroupName = "Gestión", Order = 5)]
-        public int ContractQuantity { get; set; } = 3;
+        [Display(Name = "Cantidad de Contratos", GroupName = "Configuración", Order = 1)]
+        public int ContractQuantity { get; set; } = 5;
 		
         private double riskDollars = 300;
 
@@ -100,10 +91,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 ExitOnSessionCloseSeconds = 30;
                 IncludeCommission = true;
 
-                UseBreakEven = true;
-                BreakEvenTriggerRatio = 1;
-                UseAdvancedTrail = true;
-                ContractQuantity = 3;
+                // Los valores por defecto ya están establecidos en las variables privadas
+                ContractQuantity = 5;
             }
             else if (State == State.Configure)
             {
