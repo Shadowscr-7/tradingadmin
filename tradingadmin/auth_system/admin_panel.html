@@ -406,22 +406,33 @@
         }
         
         async function approveUser(hwid) {
+            // Pedir password de administrador
+            const adminPassword = prompt('Ingresa el password de administrador:');
+            if (!adminPassword) return;
+            
             if (!confirm('¿Autorizar a este usuario para usar el bot?')) return;
             
             try {
                 const response = await fetch(`${API_BASE_URL}/approve-user`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hwid, action: 'approve' })
+                    body: JSON.stringify({ 
+                        hwid: hwid,
+                        adminPassword: adminPassword,
+                        action: 'approve' 
+                    })
                 });
+                
+                const responseData = await response.json();
                 
                 if (response.ok) {
                     alert('✅ Usuario autorizado correctamente');
                     loadRequests();
                 } else {
-                    alert('❌ Error autorizando usuario');
+                    alert(`❌ Error: ${responseData.error || 'Error autorizando usuario'}`);
                 }
             } catch (error) {
+                console.error('Error:', error);
                 alert('❌ Error de conexión');
             }
         }

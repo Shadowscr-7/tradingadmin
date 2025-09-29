@@ -306,9 +306,12 @@ app.post('/api/approve-user', async (req, res) => {
         const { hwid, adminPassword } = req.body;
         
         // Verificar password admin
-        if (adminPassword !== ADMIN_PASSWORD) {
+        if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+            console.log(`❌ Password incorrecto. Recibido: '${adminPassword}', Esperado: '${ADMIN_PASSWORD}'`);
             return res.status(401).json({ error: 'Password admin incorrecto' });
         }
+        
+        console.log(`✅ Password correcto para aprobar HWID: ${hwid}`);
         
         const { data: updatedUser, error } = await supabase
             .from('trading_user_requests')
