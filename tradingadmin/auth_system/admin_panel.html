@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Autorización - CloseCustom Bot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 1.1em;
+            margin-top: 10px;
+        }
+        
+        .requests-section {
+            padding: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.8em;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .request-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .request-card:hover {
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .user-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .computer-name {
+            color: #7f8c8d;
+            font-size: 1em;
+        }
+        
+        .request-date {
+            color: #95a5a6;
+            font-size: 0.9em;
+        }
+        
+        .request-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .detail-label {
+            font-weight: bold;
+            color: #34495e;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            color: #2c3e50;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            word-break: break-all;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-approve {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: white;
+        }
+        
+        .btn-approve:hover {
+            background: linear-gradient(135deg, #229954 0%, #27ae60 100%);
+            transform: translateY(-2px);
+        }
+        
+        .btn-reject {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+        }
+        
+        .btn-reject:hover {
+            background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+            transform: translateY(-2px);
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+        }
+        
+        .btn-info:hover {
+            background: linear-gradient(135deg, #2980b9 0%, #1f618d 100%);
+            transform: translateY(-2px);
+        }
+        
+        .status {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-approved {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .no-requests {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 1.2em;
+            padding: 50px;
+        }
+        
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 1.5em;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .request-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .actions {
+                justify-content: center;
+            }
+            
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Panel de Autorización</h1>
+            <p>CloseCustom Trading Bot - Sistema de Gestión de Usuarios</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalRequests">0</div>
+                <div class="stat-label">📋 Solicitudes Totales</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingRequests">0</div>
+                <div class="stat-label">⏳ Pendientes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="approvedUsers">0</div>
+                <div class="stat-label">✅ Usuarios Autorizados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="rejectedRequests">0</div>
+                <div class="stat-label">❌ Rechazadas</div>
+            </div>
+        </div>
+        
+        <div class="requests-section">
+            <h2 class="section-title">📋 Solicitudes de Autorización</h2>
+            <div id="requestsList">
+                <!-- Las solicitudes se cargarán aquí dinámicamente -->
+            </div>
+        </div>
+    </div>
+    
+    <button class="refresh-btn" onclick="loadRequests()" title="Actualizar">
+        🔄
+    </button>
+
+    <script>
+        // Configuración de tu servidor de autorización
+        const API_BASE_URL = 'https://tu-servidor-auth.com/api';
+        
+        // Cargar solicitudes al iniciar
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRequests();
+            // Auto-refresh cada 30 segundos
+            setInterval(loadRequests, 30000);
+        });
+        
+        async function loadRequests() {
+            try {
+                showLoading();
+                const response = await fetch(`${API_BASE_URL}/get-requests`);
+                const data = await response.json();
+                
+                updateStats(data);
+                renderRequests(data.requests || []);
+                
+            } catch (error) {
+                console.error('Error cargando solicitudes:', error);
+                showError('Error conectando con el servidor');
+            }
+        }
+        
+        function updateStats(data) {
+            document.getElementById('totalRequests').textContent = data.total || 0;
+            document.getElementById('pendingRequests').textContent = data.pending || 0;
+            document.getElementById('approvedUsers').textContent = data.approved || 0;
+            document.getElementById('rejectedRequests').textContent = data.rejected || 0;
+        }
+        
+        function renderRequests(requests) {
+            const container = document.getElementById('requestsList');
+            
+            if (requests.length === 0) {
+                container.innerHTML = `
+                    <div class="no-requests">
+                        📭 No hay solicitudes pendientes
+                        <br><small>Las nuevas solicitudes aparecerán aquí automáticamente</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = requests.map(request => `
+                <div class="request-card">
+                    <div class="request-header">
+                        <div class="user-info">
+                            <div class="user-name">👤 ${request.userName}</div>
+                            <div class="computer-name">💻 ${request.computerName}</div>
+                        </div>
+                        <div>
+                            <span class="status status-${request.status}">${getStatusText(request.status)}</span>
+                            <div class="request-date">📅 ${formatDate(request.requestDate)}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="request-details">
+                        <div class="detail-item">
+                            <div class="detail-label">🔐 Hardware ID</div>
+                            <div class="detail-value">${request.hwid}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">🤖 Bot</div>
+                            <div class="detail-value">${request.botName} v${request.botVersion}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">🌐 Usuario Windows</div>
+                            <div class="detail-value">${request.windowsUser || 'N/A'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">📊 Estado</div>
+                            <div class="detail-value">${request.status}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="actions">
+                        ${request.status === 'pending' ? `
+                            <button class="btn btn-approve" onclick="approveUser('${request.hwid}')">
+                                ✅ Aprobar Usuario
+                            </button>
+                            <button class="btn btn-reject" onclick="rejectUser('${request.hwid}')">
+                                ❌ Rechazar
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-info" onclick="showUserDetails('${request.hwid}')">
+                            ℹ️ Ver Detalles
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function approveUser(hwid) {
+            if (!confirm('¿Autorizar a este usuario para usar el bot?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/approve-user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hwid, action: 'approve' })
+                });
+                
+                if (response.ok) {
+                    alert('✅ Usuario autorizado correctamente');
+                    loadRequests();
+                } else {
+                    alert('❌ Error autorizando usuario');
+                }
+            } catch (error) {
+                alert('❌ Error de conexión');
+            }
+        }
+        
+        async function rejectUser(hwid) {
+            if (!confirm('¿Rechazar la solicitud de este usuario?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/reject-user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hwid, action: 'reject' })
+                });
+                
+                if (response.ok) {
+                    alert('❌ Usuario rechazado');
+                    loadRequests();
+                } else {
+                    alert('❌ Error rechazando usuario');
+                }
+            } catch (error) {
+                alert('❌ Error de conexión');
+            }
+        }
+        
+        function showUserDetails(hwid) {
+            // Aquí puedes mostrar más detalles del usuario
+            alert(`Detalles del Hardware ID: ${hwid}`);
+        }
+        
+        function getStatusText(status) {
+            switch(status) {
+                case 'pending': return '⏳ Pendiente';
+                case 'approved': return '✅ Autorizado';
+                case 'rejected': return '❌ Rechazado';
+                default: return status;
+            }
+        }
+        
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        function showLoading() {
+            const container = document.getElementById('requestsList');
+            container.innerHTML = `
+                <div class="no-requests">
+                    🔄 Cargando solicitudes...
+                </div>
+            `;
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('requestsList');
+            container.innerHTML = `
+                <div class="no-requests" style="color: #e74c3c;">
+                    ❌ ${message}
+                    <br><button class="btn btn-info" onclick="loadRequests()" style="margin-top: 15px;">🔄 Reintentar</button>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
